@@ -1,0 +1,75 @@
+# in the terminal below type python -m pip install fuzzymatcher
+# using python -m pip install instead of pip install since pip doesn't exist in PATH variable
+# For renaming incorrect or unclean names based on a list of correct names to match
+
+# See Excel file - Fuzzy Rename Tool General - CL.xlsx
+#     List 2 Names tab - list of desired and correct names/investment names
+#     Original name excel tab - list of names that need to be changed
+
+
+# Then run the code below, this will create a new file named "Fuzzy Renamed Results" where you should check to make sure all names were correctly renamed; you may need to rename a few manually
+
+# One time step if fuzzymodule is not found even after install:
+# You have to go to https://www.sqlite.org/download.html and Download appropriate dll files from Precompiled Binaries for Windows section of this page. You must download either 32bit or 64bit according to your hardware architecture.
+
+# Extract the zip file and copy the content and paste and then manually paste it into "your python \bin folder" or anaconda bin.
+
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+from openpyxl import load_workbook
+import pandas as pd
+from pathlib import Path
+import fuzzymatcher
+
+#filepath and file name - PDF Rename Tool Excel file should be updated for tab 2 and 3 (List 1
+#and final desired names)
+
+filepath = str(r'C:\\Users\\ChrisLee\\Desktop\\Macros and Python\\Fuzzy Rename Tool - Rename approximate match template.xlsx')
+
+PDF_Rename_Tool_Dict = pd.read_excel(filepath, sheet_name = ['List 1','List 2'])
+# #update per file path and file name
+
+original_name = PDF_Rename_Tool_Dict.get('List 1')
+final_name = PDF_Rename_Tool_Dict.get('List 2')
+
+left_on = ["List 1 Names Cleaned"]
+right_on = ["List 2 Names"]
+
+matched_results = fuzzymatcher.fuzzy_left_join(original_name,
+                                            final_name,
+                                            left_on,
+                                            right_on,
+                                            left_id_col='List 1 Names Cleaned',
+                                            right_id_col='List 2 Names')
+
+cols = [
+    "best_match_score", "List 1 Names Cleaned",
+    "List 2 Names"
+]
+
+#new matched name dataframe
+matched_name = matched_results[cols]
+
+# Apply a conditional expression to the "List 2 Names" column
+matched_name["List 2 Names"] = matched_name.apply(lambda row: row["List 2 Names"] if row["best_match_score"] > 0.03 else "", axis=1)
+
+# Writes to a new Excel file 'Matched Names with Python.xlsx' instead of a new tab
+matched_name.to_excel('Fuzzy Rename Tool - Rename approximate match Results.xlsx', sheet_name='Matched Name with Python', index=False)
+
+# Adjust column widths in the Excel file
+book = load_workbook('Fuzzy Rename Tool - Rename approximate match Results.xlsx')
+sheet = book['Matched Name with Python']
+
+for column in sheet.columns:
+    max_length = 0
+    column_letter = column[0].column_letter
+    for cell in column:
+        try:
+            if len(str(cell.value)) > max_length:
+                max_length = len(str(cell.value))
+        except:
+            pass
+    adjusted_width = (max_length + 2) * 1.2
+    sheet.column_dimensions[column_letter].width = adjusted_width
+
+book.save('Fuzzy Rename Tool - Rename approximate match Results.xlsx')
