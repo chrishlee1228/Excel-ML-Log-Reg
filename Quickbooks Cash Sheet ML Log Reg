@@ -1,0 +1,105 @@
+from sklearn.feature_extraction.text import CountVectorizer
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from xlsxwriter import Workbook
+
+#******************************************************************************
+# Load the data from the "Cash Sheet" tab in the Excel file, ***update sheet_name based on what we are training for
+data = pd.read_excel(r'C:\Users\ChrisLee\Chicago Atlantic Dropbox\CA Group\2_Fund\1_Fund Accounting\16_CA Digital\Financials\CA Digital Mining - Cash Sheet Macro.xlsm', sheet_name="Cash Sheet", header=1)
+
+
+#******************************************************************************
+# Remove the rows with NaN values, ***update based on sheet_name
+data = data.dropna(subset=['Transaction Description', 'Offset Name'], how="all")
+# data['Description'] = data['Description'].fillna("")
+
+# Replace empty values in the "Name" column with "NaN", ***update based on sheet
+data['Offset Name'] = data['Offset Name'].fillna("NaN")
+
+#******************************************************************************
+# Prepare the text data for vectorization ***data column used for training
+# text_data = [" ".join(text) for text in data['Transaction Description']]
+text_data = [" ".join(str(text)) for text in data['Transaction Description']]
+
+# Transform the "Description/Transaction Description" column to a bag-of-words representation 
+# When the CountVectorizer is applied with token_pattern=r'\b\w+\b', 
+# it will tokenize the input text into individual words, ignoring punctuation 
+# and other non-word characters. It then counts the occurrences of each word 
+# in the text and represents the text data as a matrix of token counts
+
+vectorizer = CountVectorizer(token_pattern=r'\b\w+\b')
+vectorized_data = vectorizer.fit_transform(text_data) #Transaction Description data
+
+#******************************************************************************
+# Split the data into training and test sets - ***data column you need to make predictions for after training
+train_start_row = 2
+train_end_row = int(input("Enter the last row of available Offset data:"))
+
+ # ***********************************UPDATE****************************************
+X_train = vectorized_data[train_start_row - 1:train_end_row]
+y_train = data['Offset Name'].astype(str)[train_start_row - 1:train_end_row]
+X_test = vectorized_data[:train_start_row - 1]
+y_test = data['Offset Name'].astype(str)[:train_start_row - 1]
+
+# Train the logistic regression model using cross-validation
+model = LogisticRegression(max_iter=10000)
+model.fit(X_train, y_train)
+
+# Make predictions on the test data
+y_pred_test = model.predict(X_test)
+
+# Evaluate the model performance on the test data
+accuracy_test = accuracy_score(y_test, y_pred_test)
+precision_test = precision_score(y_test, y_pred_test, average='weighted')
+recall_test = recall_score(y_test, y_pred_test, average='weighted')
+f1_test = f1_score(y_test, y_pred_test, average='weighted')
+
+# Create a confusion matrix
+conf_matrix = confusion_matrix(y_test, y_pred_test)
+
+# Create a DataFrame with the predicted fields
+predictions_test_df = pd.DataFrame({'Offset Name Prediction': y_pred_test})
+
+# Concatenate the predictions DataFrame with the original test data
+test_data = data.loc[y_test.index, :]
+test_results_df = pd.concat([test_data.reset_index(drop=True), predictions_test_df], axis=1)
+
+# Export the evaluation metrics and predicted fields to an Excel file
+writer = pd.ExcelWriter('CA Digital Mining - Cash Sheet Macro Predictions Model.xlsx', engine='xlsxwriter')
+test_results_df.to_excel(writer, sheet_name='Results', index=False)
+metrics_df = pd.DataFrame({'Accuracy': [accuracy_test], 'Precision': [precision_test], 'Recall': [recall_test], 'F1 Score': [f1_test]})
+metrics_df.to_excel(writer, sheet_name='Metrics', index=False)
+writer.close()
+
+
+# ---ReLoad the data from the "Cash Sheet" tab in the Excel file for prediction of the unknown classifications---
+data = pd.read_excel(r'C:\Users\ChrisLee\Chicago Atlantic Dropbox\CA Group\2_Fund\1_Fund Accounting\16_CA Digital\Financials\CA Digital Mining - Cash Sheet Macro.xlsm', sheet_name="Cash Sheet", header=1)
+
+#******************************************************************************
+# uncomment if this column isn't being used for predictions
+data['Offset Name'] = data['Offset Name'].fillna("")
+
+#******************************************************************************
+# Prepare the text data for vectorization, ***data column you want it to base predictions off of
+# text_data = [" ".join(text) for text in data['Description']]
+text_data = [" ".join(str(text)) for text in data['Transaction Description']]
+
+# Transform the "Description" column to a bag-of-words representation
+vectorizer = CountVectorizer(token_pattern=r'\b\w+\b')
+vectorized_data = vectorizer.fit_transform(text_data)
+
+# Make predictions on the unseen test data
+y_pred_test_2 = model.predict(vectorized_data)
+
+# Create a DataFrame with the predicted Accounts
+new_predictions_df = pd.DataFrame({'Offset Name Prediction': y_pred_test_2})
+
+# Concatenate the predictions DataFrame with the original test data
+new_results_df = pd.concat([data.reset_index(drop=True), new_predictions_df], axis=1)
+
+# Export the evaluation metrics and predicted Accounts to a new Excel file
+new_writer = pd.ExcelWriter(r'C:\Users\ChrisLee\Chicago Atlantic Dropbox\CA Group\2_Fund\1_Fund Accounting\16_CA Digital\Financials\CA Digital Mining - Cash Sheet Macro Predictions.xlsx', engine='xlsxwriter')
+new_results_df.to_excel(new_writer, sheet_name='Results', index=False)
+new_writer.close()
