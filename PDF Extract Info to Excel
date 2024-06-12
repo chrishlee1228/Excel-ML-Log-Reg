@@ -1,0 +1,74 @@
+import fitz
+import os
+import pandas as pd
+
+# Set the folder path
+folder_path = r'''C:\Users\ChrisLee\Chicago Atlantic Dropbox\CA Group\2_Fund\1_Fund Accounting\11_CAEF (Fund Complex)\11_Members' Capital\Investor Statements\2024.03.31'''
+
+# Initialize a list to store the data
+data = []
+
+# Loop through each sub-folder
+for root, dirs, files in os.walk(folder_path):
+    for file in files:
+        # Check if the file name contains the keywords
+        if 'Statements' in file.lower() or 'statement' in file.lower():
+            try:
+                # Open the PDF file using PyMuPDF (a Python binding for the MuPDF library)
+                with fitz.open(os.path.join(root, file)) as doc:
+                    # Iterate through all the pages of the document
+                    for page_num in range(len(doc)):
+                        # Get the current page
+                        page = doc[page_num]
+                        # Search for the various fields
+                        name_instances = page.search_for('Period Start Date')
+                        market_value_instances = page.search_for('Increase/(Decrease) in Market Value')
+                        closing_value_instances = page.search_for('Closing Value of Account')
+                        entityID_instances = page.search_for('EntityID')
+
+
+                        if name_instances:
+                            # Extract the text for each field
+                            x1, y1, x2, y2 = name_instances[0].irect
+                            name = page.get_text('text', clip=(x2-500, y1-10, x2-200, y2)).strip()
+                            x1, y1, x2, y2 = market_value_instances[0].irect
+                            market_value = page.get_text('text', clip=(x2+100, y1, x2+250, y2)).strip()
+                            x1, y1, x2, y2 = closing_value_instances[0].irect
+                            closing_value = page.get_text('text', clip=(x2+100, y1, x2+250, y2)).strip()
+                            x1, y1, x2, y2 = entityID_instances[0].irect
+                            entityID = page.get_text('text', clip=(x2+30, y1, x2+100, y2)).strip()
+
+
+                            # Append the data to the list
+                            data.append([os.path.basename(root), file, name, market_value, closing_value, entityID])
+                            break
+                        else:
+                            # Append the data to the list with empty strings for the missing fields
+                            data.append([os.path.basename(root), file, '', '', '',''])
+            except fitz.fitz.FileDataError:
+                print(f"Error: {file} in {root} is a broken PDF file. Skipping...")
+                continue
+
+df = pd.DataFrame(data, columns=['Subfolder Name', 'File Name', 'name', 'change_in_market_value', 'closing_value','entityID'])
+
+# Sorting by 'Partner Num'
+# df = df.sort_values(by='Partner Num')
+
+# # Export the data to an Excel file
+# df.to_excel('Extracted Distrib info sub-folders text search.xlsx', index=False)
+
+#Export the data to an Excel file with freeze panes and filter
+with pd.ExcelWriter('PDF PCAP Investor Stmt Extract Info - Fitz,OS.xlsx') as writer:
+    df.to_excel(writer, sheet_name='Sheet1', index=False)
+    workbook = writer.book
+    worksheet = writer.sheets['Sheet1']
+    # Set freeze panes on the top header
+    worksheet.freeze_panes(1, 0)
+    # Add filter to the Excel file
+    worksheet.autofilter(0, 0, df.shape[0], df.shape[1]-1)
+    # Set column widths to fit the data
+    for i, col in enumerate(df.columns):
+        width = max(df[col].astype(str).map(len).max(), len(col))
+        worksheet.set_column(i, i, width)
+
+print("Data exported successfully to Excel file!")
